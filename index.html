@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>I Love You Particle Animation</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        #matrixCanvas {
+            z-index: 1;
+        }
+        #particleCanvas {
+            z-index: 2;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="matrixCanvas"></canvas>
+    <canvas id="particleCanvas"></canvas>
+    <script>
+        const mCanvas = document.getElementById('matrixCanvas');
+        const mCtx = mCanvas.getContext('2d');
+        const pCanvas = document.getElementById('particleCanvas');
+        const pCtx = pCanvas.getContext('2d', { willReadFrequently: true });
+        let cw, ch;
+        
+        function resize() {
+            cw = mCanvas.width = pCanvas.width = window.innerWidth;
+            ch = mCanvas.height = pCanvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+        
+        // ==========================================
+        // 1. EFEK MATRIX RAIN (BACKGROUND)
+        // ==========================================
+        const matrixLetters = "ILOVEYOU".split('');
+        const fontSize = 16;
+        let columns, drops;
+
+        function initMatrix() {
+            columns = cw / fontSize;
+            drops = [];
+            for (let x = 0; x < columns; x++) {
+                drops[x] = 1;
+            }
+        }
+        initMatrix();
+
+        function drawMatrix() {
+            mCtx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            mCtx.fillRect(0, 0, cw, ch);
+            
+            mCtx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+            mCtx.font = fontSize + 'px monospace';
+            
+            for (let i = 0; i < drops.length; i++) {
+                const text = matrixLetters[Math.floor(Math.random() * matrixLetters.length)];
+                mCtx.fillText(text, i * fontSize, drops[i] * fontSize);
+                
+                if (drops[i] * fontSize > ch && Math.random() > 0.975) {
+                    drops[i] = 0;
+                }
+                drops[i]++;
+            }
+        }
+        
+        // ==========================================
+        // 2. SISTEM PARTIKEL (TULISAN & HATI)
+        // ==========================================
+        let particles = [];
+        let currentState = "INIT";
+        let isExploding = false;
+        let finalOpacity = 0;
+
+        class Particle {
+            constructor(x, y) {
+                this.x = Math.random() * cw;
+                this.y = Math.random() * ch;
+                this.targetX = x;
+                this.targetY = y;
+                this.vx = 0;
+                this.vy = 0;
+                this.radius = 2.5;
+            }
+            update() {
+                if (isExploding) {
+                    let angle = Math.random() * Math.PI * 2;
+                    let force = Math.random() * 20;
+                    this.vx += Math.cos(angle) * force;
+                    this.vy += Math.sin(angle) * force;
+                } else {
+                    let dx = this.targetX - this.x;
+                    let dy = this.targetY - this.y;
+                    this.vx += dx * 0.05;
+                    this.vy += dy * 0.05;
+                }
+                
+                this.vx *= 0.8;
+                this.vy *= 0.8;
+                
+                this.x += this.vx;
+                this.y += this.vy;
+            }
+            draw() {
+                pCtx.beginPath();
+                pCtx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                pCtx.fill();
+            }
+        }
+        
+        // ==========================================
+        // 3. GENERATOR KOORDINAT PARTIKEL
+        // ==========================================
+        const offCanvas = document.createElement('canvas');
+        const oCtx = offCanvas.getContext('2d', { willReadFrequently: true });
+        
+        function getTextPoints(text) {
+            offCanvas.width = cw;
+            offCanvas.height = ch;
+            oCtx.fillStyle = 'black';
+            oCtx.fillRect(0, 0, cw, ch);
+            oCtx.fillStyle = 'white';
+            
+            // --- BAGIAN YANG DIPERBAIKI (AUTO RESIZE FONT) ---
+            let textFontSize = cw < 600 ? 150 : 250;
+            oCtx.font = 'bold ' + textFontSize + 'px Arial';
+            
+            // Cek apakah teks terlalu lebar
+            let textWidth = oCtx.measureText(text).width;
+            let maxWidth = cw * 0.9; // Maksimal lebar teks adalah 90% dari layar
+            
+            if (textWidth > maxWidth) {
+                // Kecilkan ukuran font secara proporsional
+                textFontSize = textFontSize * (maxWidth / textWidth);
+                oCtx.font = 'bold ' + textFontSize + 'px Arial';
+            }
+            // --------------------------------------------------
+
+            oCtx.textAlign = 'center';
+            oCtx.textBaseline = 'middle';
+            oCtx.fillText(text, cw / 2, ch / 2);
+
+            let data = oCtx.getImageData(0, 0, cw, ch).data;
+            let points = [];
+            let gap = 7; 
+            for (let y = 0; y < ch; y += gap) {
+                for (let x = 0; x < cw; x += gap) {
+                    let index = (y * cw + x) * 4;
+                    if (data[index] > 128) {
+                        points.push({ x, y });
+                    }
+                }
+            }
+            return points.sort(() => Math.random() - 0.5);
+        }
+        
+        function getHeartPoints() {
+            let points = [];
+            let scales = cw < 600 ? [8, 9, 10] : [13, 14, 15]; 
+            
+            for (let s of scales) {
+                for (let t = 0; t < Math.PI * 2; t += 0.05) {
+                    let x = 16 * Math.pow(Math.sin(t), 3);
+                    let y = -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t));
+                    points.push({ 
+                        x: cw / 2 + x * s, 
+                        y: ch / 2 + y * s - 20 
+                    });
+                }
+            }
+            return points.sort(() => Math.random() - 0.5);
+        }
+        
+        function updateParticleTargets(points) {
+            if (particles.length < points.length) {
+                let diff = points.length - particles.length;
+                for (let i = 0; i < diff; i++) {
+                    particles.push(new Particle(cw / 2, ch / 2));
+                }
+            }
+            
+            for (let i = 0; i < particles.length; i++) {
+                if (i < points.length) {
+                    particles[i].targetX = points[i].x;
+                    particles[i].targetY = points[i].y;
+                } else {
+                    particles[i].targetX = Math.random() > 0.5 ? -200 : cw + 200;
+                    particles[i].targetY = Math.random() > 0.5 ? -200 : ch + 200;
+                }
+            }
+        }
+        
+        // ==========================================
+        // 4. ANIMASI UTAMA DAN LOGIKA SEKUEN
+        // ==========================================
+        async function startParticleSequence() {
+            const countdown = ["3", "2", "1"];
+            for (let text of countdown) {
+                updateParticleTargets(getTextPoints(text));
+                await new Promise(r => setTimeout(r, 1500)); 
+                
+                isExploding = true; 
+                await new Promise(r => setTimeout(r, 200)); 
+                isExploding = false; 
+            }
+            
+            // Kata-kata romantis
+            const finalWords = ["Ira","Rizky","Ramadhani","You", "Are", "My", "Love"];
+            for (let word of finalWords) {
+                updateParticleTargets(getTextPoints(word));
+                await new Promise(r => setTimeout(r, 1500));
+                
+                isExploding = true;
+                await new Promise(r => setTimeout(r, 200));
+                isExploding = false;
+            }
+            
+            currentState = "FINAL_HEART";
+            updateParticleTargets(getHeartPoints());
+        }
+        
+        function drawFinalText() {
+            if (currentState === "FINAL_HEART") {
+                if (finalOpacity < 1) finalOpacity += 0.01;
+                
+                pCtx.font = "bold " + (cw < 600 ? 18 : 24) + "px Arial";
+                pCtx.textAlign = 'center';
+                pCtx.textBaseline = 'middle';
+                pCtx.fillStyle = `rgba(255, 255, 255, ${finalOpacity})`;
+                pCtx.fillText("i love you ira 🤍", cw / 2, ch / 2);
+                
+                pCtx.fillStyle = '#ffb3c6';
+                pCtx.shadowBlur = 15;
+                pCtx.shadowColor = '#ff6b81';
+            } else {
+                pCtx.fillStyle = '#ffffff';
+                pCtx.shadowBlur = 0;
+            }
+            
+            for (let p of particles) {
+                p.draw();
+            }
+            
+            pCtx.shadowBlur = 0; 
+        }
+        
+        function animate() {
+            drawMatrix();
+            pCtx.clearRect(0, 0, cw, ch);
+            
+            for (let p of particles) {
+                p.update();
+            }
+            
+            drawFinalText();
+            requestAnimationFrame(animate);
+        }
+        
+        // ==========================================
+        // 5. MULAI ANIMASI
+        // ==========================================
+        animate();
+        setTimeout(startParticleSequence, 1000);
+
+    </script>
+</body>
+</html>
